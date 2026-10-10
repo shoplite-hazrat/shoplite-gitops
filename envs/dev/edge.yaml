@@ -1,0 +1,3 @@
+# Public hostnames for dev (served on https://<host>:8443).
+hostname: dev.shoplite.localhost
+mailpitHostname: mail-dev.shoplite.localhost

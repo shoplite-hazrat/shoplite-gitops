@@ -12,9 +12,20 @@ spec:
   description: Cluster add-ons (operators, gateway, monitoring). May create cluster-scoped resources.
   sourceRepos:
     - https://cloudnative-pg.github.io/charts
+    - https://charts.jetstack.io
+    - docker.io/envoyproxy
+    - https://github.com/shoplite-hazrat/shoplite-gitops.git
   destinations:
     - server: https://kubernetes.default.svc
       namespace: cnpg-system
+    - server: https://kubernetes.default.svc
+      namespace: envoy-gateway-system
+    - server: https://kubernetes.default.svc
+      namespace: cert-manager
+    - server: https://kubernetes.default.svc
+      namespace: gateway
+    - server: https://kubernetes.default.svc
+      namespace: argocd # only the ReferenceGrant for the Argo CD route
   clusterResourceWhitelist:
     - group: "*"
       kind: "*"

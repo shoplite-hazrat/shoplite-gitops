@@ -1,0 +1,3 @@
+# Public hostnames for prod: the apex name.
+hostname: shoplite.localhost
+mailpitHostname: mail.shoplite.localhost

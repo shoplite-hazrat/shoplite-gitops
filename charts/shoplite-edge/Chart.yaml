@@ -1,0 +1,5 @@
+apiVersion: v2
+name: shoplite-edge
+description: Public routes for one ShopLite environment, attached to the shared Gateway.
+type: application
+version: 0.1.0
