@@ -1,0 +1,61 @@
+{{- if .Values.migration.enabled }}
+# Runs before every sync (PreSync). If it fails, Argo CD stops and the running
+# version keeps serving: a broken migration never reaches a rollout.
+# Migrations must therefore be backwards compatible with the running version
+# (expand/contract), because old pods keep running until the rollout finishes.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "svc.name" . }}-migrate
+  labels:
+    {{- include "svc.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migration
+  annotations:
+    argocd.argoproj.io/hook: PreSync
+    # Keep the finished Job (and its logs) until the next sync replaces it.
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: {{ .Values.migration.backoffLimit }}
+  activeDeadlineSeconds: {{ .Values.migration.activeDeadlineSeconds }}
+  template:
+    metadata:
+      # Deliberately NOT the service's selector labels, or the Service would
+      # route traffic to this pod while it runs.
+      labels:
+        app.kubernetes.io/name: {{ include "svc.name" . }}-migrate
+        app.kubernetes.io/part-of: shoplite
+        app.kubernetes.io/component: migration
+    spec:
+      restartPolicy: Never
+      # The default ServiceAccount: PreSync hooks run before the service's own
+      # ServiceAccount is created on the very first sync.
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "svc.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: migrate
+          image: {{ include "svc.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.migration.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          env:
+            {{- include "svc.env" . | nindent 12 }}
+          resources:
+            requests: { cpu: 25m, memory: 64Mi }
+            limits: { memory: 256Mi }
+          securityContext:
+            {{- include "svc.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi
+{{- end }}

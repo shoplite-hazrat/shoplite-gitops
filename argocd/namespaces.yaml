@@ -1,0 +1,35 @@
+# One namespace per environment. Pod Security Admission enforces the
+# "restricted" profile: pods must run as non-root, drop all capabilities,
+# use the default seccomp profile, and so on. Anything else is rejected.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shoplite-dev
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  labels:
+    shoplite.io/env: dev
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shoplite-staging
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  labels:
+    shoplite.io/env: staging
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shoplite-prod
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  labels:
+    shoplite.io/env: prod
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/warn: restricted

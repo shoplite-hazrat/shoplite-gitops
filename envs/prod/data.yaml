@@ -1,0 +1,6 @@
+# Data services sizing for prod.
+postgres:
+  # 1 instance to fit a laptop. On real infrastructure: instances: 3, so
+  # CloudNativePG can fail over to a replica automatically.
+  instances: 1
+  storageSize: 2Gi

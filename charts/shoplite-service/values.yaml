@@ -1,0 +1,81 @@
+# Defaults for every ShopLite service. values/<service>.yaml sets what is
+# specific to a service; envs/<env>/services/<service>.yaml sets what differs
+# per environment (image tag, replicas, resources).
+
+# Stable in-namespace DNS name (e.g. http://catalog:3000), independent of env.
+fullnameOverride: ""
+
+image:
+  repository: ""
+  # Immutable sha-<commit> tag, bumped by CI. Never "latest" or "main".
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+replicaCount: 1
+
+# Container arguments (the images' ENTRYPOINT stays as built).
+args: []
+
+containerPort: 8080
+service:
+  enabled: true
+  port: ""  # defaults to containerPort
+
+# Plain environment variables: NAME: value
+env: {}
+# Environment variables from Secrets: NAME: { secretName: x, key: y }
+secretEnv: {}
+
+probes:
+  liveness:
+    path: /healthz
+    periodSeconds: 10
+    failureThreshold: 3
+  readiness:
+    path: /readyz
+    periodSeconds: 5
+    failureThreshold: 3
+  # Gives slow starters up to 5 minutes before liveness starts counting.
+  startup:
+    path: /healthz
+    periodSeconds: 5
+    failureThreshold: 60
+
+resources:
+  requests:
+    cpu: 25m
+    memory: 64Mi
+  limits:
+    memory: 256Mi
+
+# readOnlyRootFilesystem is on; these paths get a writable emptyDir.
+writablePaths:
+  - /tmp
+
+# Pause before SIGTERM so endpoints/load balancers stop sending traffic first.
+preStopSleepSeconds: 5
+terminationGracePeriodSeconds: 30
+
+# Database migrations as an Argo CD PreSync hook: they run, and must succeed,
+# before the new version is rolled out.
+migration:
+  enabled: false
+  args: []
+  backoffLimit: 6
+  activeDeadlineSeconds: 600
+
+podDisruptionBudget:
+  # Only meaningful with 2+ replicas; enabled automatically then.
+  maxUnavailable: 1
+
+autoscaling:
+  enabled: false
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []

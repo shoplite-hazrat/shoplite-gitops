@@ -1,0 +1,46 @@
+# AppProjects are Argo CD's guardrails: which repos an Application may deploy
+# from, and where it may deploy to. A mistake (or a malicious change) in an app
+# definition can't escape its project's boundaries.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: platform
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  description: Cluster add-ons (operators, gateway, monitoring). May create cluster-scoped resources.
+  sourceRepos:
+    - https://cloudnative-pg.github.io/charts
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: cnpg-system
+  clusterResourceWhitelist:
+    - group: "*"
+      kind: "*"
+---
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: shoplite
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+spec:
+  description: ShopLite services and their data, one namespace per environment.
+  sourceRepos:
+    - https://github.com/shoplite-hazrat/shoplite-gitops.git
+    - https://nats-io.github.io/k8s/helm/charts/
+  destinations:
+    - server: https://kubernetes.default.svc
+      namespace: shoplite-*
+  # Namespaced resources only: apps can't create CRDs, ClusterRoles, etc.
+  clusterResourceWhitelist: []
+  namespaceResourceBlacklist:
+    # Quotas and limits are owned by the platform, not by the apps they constrain.
+    - group: ""
+      kind: ResourceQuota
+    - group: ""
+      kind: LimitRange
+  orphanedResources:
+    warn: true
