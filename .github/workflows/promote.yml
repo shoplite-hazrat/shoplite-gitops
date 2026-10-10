@@ -1,0 +1,89 @@
+# Promotion = copying the exact image tags that were tested in one environment
+# into the next. Run it from the Actions tab ("Run workflow"). It opens a PR;
+# merging that PR is the approval, and Argo CD deploys it.
+name: Promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      from:
+        description: Promote images from
+        type: choice
+        options: [dev, staging]
+        default: dev
+      services:
+        description: Comma-separated services, or "all"
+        type: string
+        default: all
+
+permissions:
+  contents: read
+
+concurrency:
+  group: promote
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-24.04
+    env:
+      # A PR opened with GITHUB_TOKEN would not trigger CI, so its required
+      # ci-ok check could never pass. Same scoped token as the deploy bot.
+      GH_TOKEN: ${{ secrets.GITOPS_TOKEN }}
+      FROM: ${{ inputs.from }}
+      # Fixed order: dev -> staging -> prod. Nothing skips staging.
+      TO: ${{ inputs.from == 'dev' && 'staging' || 'prod' }}
+      SERVICES: ${{ inputs.services }}
+    steps:
+      - name: Check token
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::Secret GITOPS_TOKEN is not set in this repository."
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ secrets.GITOPS_TOKEN }}
+      - name: Copy image tags
+        id: copy
+        run: |
+          if [ "$SERVICES" = "all" ]; then
+            SERVICES=$(find "envs/$FROM/services" -name '*.yaml' -exec basename {} .yaml \; | sort | paste -sd, -)
+          fi
+          {
+            echo "| Service | $TO before | $TO after |"
+            echo "|---|---|---|"
+          } > /tmp/table.md
+          changed=0
+          for svc in ${SERVICES//,/ }; do
+            src="envs/$FROM/services/$svc.yaml"; dst="envs/$TO/services/$svc.yaml"
+            [ -f "$src" ] || { echo "::error::$src not found"; exit 1; }
+            [ -f "$dst" ] || { echo "::error::$dst not found (add the service to $TO first)"; exit 1; }
+            new=$(yq '.image.tag' "$src"); old=$(yq '.image.tag' "$dst")
+            if [ "$new" != "$old" ]; then
+              TAG="$new" yq -i '.image.tag = strenv(TAG)' "$dst"
+              echo "| \`$svc\` | \`$old\` | \`$new\` |" >> /tmp/table.md
+              changed=1
+            fi
+          done
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+      - name: Open promotion PR
+        if: steps.copy.outputs.changed == '1'
+        run: |
+          BRANCH="promote/${FROM}-to-${TO}-$(date -u +%Y%m%d%H%M%S)"
+          git config user.name "shoplite-ci"
+          git config user.email "ci@shoplite.local"
+          git switch -c "$BRANCH"
+          git commit -am "promote(${TO}): images from ${FROM}"
+          git push -u origin "$BRANCH"
+          {
+            echo "Promotes the image tags currently running in **${FROM}** to **${TO}**."
+            echo
+            cat /tmp/table.md
+            echo
+            echo "Merging this PR is the approval; Argo CD deploys to \`shoplite-${TO}\` within a minute."
+            echo "Requested by @${GITHUB_ACTOR} via ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          } > /tmp/body.md
+          gh pr create --base main --head "$BRANCH" --title "promote(${TO}): images from ${FROM}" --body-file /tmp/body.md
+      - if: steps.copy.outputs.changed == '0'
+        run: echo "::notice::${TO} already runs the same tags as ${FROM}; nothing to promote."
