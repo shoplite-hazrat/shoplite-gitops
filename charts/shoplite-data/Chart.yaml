@@ -1,0 +1,5 @@
+apiVersion: v2
+name: shoplite-data
+description: Per-environment data services for ShopLite (Postgres per service via CloudNativePG, Redis cache, Mailpit).
+type: application
+version: 0.1.0

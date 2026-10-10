@@ -1,0 +1,108 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "svc.name" . }}
+  labels:
+    {{- include "svc.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  revisionHistoryLimit: 5
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Never drop below desired capacity during a rollout.
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "svc.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "svc.labels" . | nindent 8 }}
+      {{- with .Values.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      serviceAccountName: {{ include "svc.name" . }}
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- include "svc.podSecurityContext" . | nindent 8 }}
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
+      # Spread replicas across zones first, then nodes; prefer, don't block.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "svc.selectorLabels" . | nindent 14 }}
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "svc.selectorLabels" . | nindent 14 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ include "svc.name" . }}
+          image: {{ include "svc.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.containerPort }}
+              protocol: TCP
+          env:
+            - name: PORT
+              value: {{ .Values.containerPort | quote }}
+            {{- include "svc.env" . | nindent 12 }}
+          startupProbe:
+            httpGet: { path: {{ .Values.probes.startup.path }}, port: http }
+            periodSeconds: {{ .Values.probes.startup.periodSeconds }}
+            failureThreshold: {{ .Values.probes.startup.failureThreshold }}
+          livenessProbe:
+            httpGet: { path: {{ .Values.probes.liveness.path }}, port: http }
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+          readinessProbe:
+            httpGet: { path: {{ .Values.probes.readiness.path }}, port: http }
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+          lifecycle:
+            preStop:
+              # Native sleep action: works in distroless images with no shell.
+              sleep:
+                seconds: {{ .Values.preStopSleepSeconds }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          securityContext:
+            {{- include "svc.containerSecurityContext" . | nindent 12 }}
+          volumeMounts:
+            {{- range .Values.writablePaths }}
+            - name: {{ include "svc.writableVolumeName" . }}
+              mountPath: {{ . }}
+            {{- end }}
+      volumes:
+        {{- range .Values.writablePaths }}
+        - name: {{ include "svc.writableVolumeName" . }}
+          emptyDir:
+            sizeLimit: 64Mi
+        {{- end }}

@@ -1,0 +1,18 @@
+# order-service: Python API. Postgres + calls catalog + publishes to NATS.
+fullnameOverride: order
+image:
+  repository: ghcr.io/shoplite-hazrat/order
+containerPort: 8000
+env:
+  LOG_LEVEL: INFO
+  CATALOG_URL: http://catalog:3000
+  NATS_URL: nats://nats:4222
+  SHUTDOWN_TIMEOUT_SECONDS: "20"
+secretEnv:
+  DATABASE_URL: { secretName: order-db-app, key: uri }
+migration:
+  enabled: true
+  args: ["alembic", "upgrade", "head"]
+resources:
+  requests: { cpu: 25m, memory: 96Mi }
+  limits: { memory: 256Mi }

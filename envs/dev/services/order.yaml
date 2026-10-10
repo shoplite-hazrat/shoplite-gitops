@@ -1,0 +1,3 @@
+# order in dev. The image tag is updated by CI (dev) or by promotion PRs (staging, prod).
+image:
+  tag: sha-3f55e5a

@@ -1,0 +1,95 @@
+# Per-environment infrastructure. Every directory under envs/ is an
+# environment: adding envs/qa/ (with a data.yaml) creates qa-data and qa-nats.
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: environments-data
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - git:
+        repoURL: https://github.com/shoplite-hazrat/shoplite-gitops.git
+        revision: main
+        directories:
+          - path: envs/*
+  template:
+    metadata:
+      name: "{{ .path.basename }}-data"
+      labels:
+        shoplite.io/env: "{{ .path.basename }}"
+        shoplite.io/component: data
+    spec:
+      project: shoplite
+      source:
+        repoURL: https://github.com/shoplite-hazrat/shoplite-gitops.git
+        targetRevision: main
+        path: charts/shoplite-data
+        helm:
+          releaseName: data
+          valueFiles:
+            - "../../envs/{{ .path.basename }}/data.yaml"
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "shoplite-{{ .path.basename }}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          # The Cluster CRD may not exist yet on a fresh cluster (CNPG syncs in
+          # parallel); skip dry-run for it and let retries settle.
+          - SkipDryRunOnMissingResource=true
+        retry:
+          limit: 10
+          backoff: { duration: 15s, factor: 2, maxDuration: 3m }
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: environments-nats
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - git:
+        repoURL: https://github.com/shoplite-hazrat/shoplite-gitops.git
+        revision: main
+        directories:
+          - path: envs/*
+  template:
+    metadata:
+      name: "{{ .path.basename }}-nats"
+      labels:
+        shoplite.io/env: "{{ .path.basename }}"
+        shoplite.io/component: messaging
+    spec:
+      project: shoplite
+      # Multi-source: the upstream chart, with values kept in this repo.
+      sources:
+        - repoURL: https://nats-io.github.io/k8s/helm/charts/
+          chart: nats
+          targetRevision: 2.15.0
+          helm:
+            releaseName: nats
+            valueFiles:
+              - $values/envs/nats-values.yaml
+        - repoURL: https://github.com/shoplite-hazrat/shoplite-gitops.git
+          targetRevision: main
+          ref: values
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "shoplite-{{ .path.basename }}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        retry:
+          limit: 10
+          backoff: { duration: 15s, factor: 2, maxDuration: 3m }

@@ -1,0 +1,48 @@
+# One Application per (environment, service), generated from the files under
+# envs/<env>/services/<service>.yaml. Each app renders the shared
+# shoplite-service chart with two value files layered in order:
+#   values/<service>.yaml                 what is specific to the service
+#   envs/<env>/services/<service>.yaml    what differs per environment (image tag!)
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: services
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - git:
+        repoURL: https://github.com/shoplite-hazrat/shoplite-gitops.git
+        revision: main
+        files:
+          - path: envs/*/services/*.yaml
+  template:
+    metadata:
+      name: '{{ index .path.segments 1 }}-{{ trimSuffix ".yaml" .path.filename }}'
+      labels:
+        shoplite.io/env: "{{ index .path.segments 1 }}"
+        shoplite.io/service: '{{ trimSuffix ".yaml" .path.filename }}'
+    spec:
+      project: shoplite
+      source:
+        repoURL: https://github.com/shoplite-hazrat/shoplite-gitops.git
+        targetRevision: main
+        path: charts/shoplite-service
+        helm:
+          releaseName: '{{ trimSuffix ".yaml" .path.filename }}'
+          valueFiles:
+            - '../../values/{{ trimSuffix ".yaml" .path.filename }}.yaml'
+            - "../../{{ .path.path }}/{{ .path.filename }}"
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "shoplite-{{ index .path.segments 1 }}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        retry:
+          limit: 10
+          backoff: { duration: 15s, factor: 2, maxDuration: 3m }

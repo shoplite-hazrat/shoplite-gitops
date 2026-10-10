@@ -1,0 +1,36 @@
+# NATS with JetStream, shared by every environment's nats Application.
+# All containers are made Pod Security "restricted" compliant (the image
+# defaults to root).
+config:
+  jetstream:
+    enabled: true
+    fileStore:
+      pvc:
+        size: 1Gi
+natsBox:
+  enabled: false
+reloader:
+  merge:
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities: { drop: ["ALL"] }
+container:
+  merge:
+    resources:
+      requests: { cpu: 25m, memory: 32Mi }
+      limits: { memory: 256Mi }
+    securityContext:
+      allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
+      capabilities: { drop: ["ALL"] }
+podTemplate:
+  merge:
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile: { type: RuntimeDefault }

@@ -1,0 +1,18 @@
+# notification-worker: consumes orders.created, sends email. HTTP is ops-only.
+fullnameOverride: notification
+image:
+  repository: ghcr.io/shoplite-hazrat/notification
+containerPort: 8001
+env:
+  LOG_LEVEL: INFO
+  NATS_URL: nats://nats:4222
+  SMTP_HOST: mailpit
+  SMTP_PORT: "1025"
+secretEnv:
+  DATABASE_URL: { secretName: notification-db-app, key: uri }
+migration:
+  enabled: true
+  args: ["alembic", "upgrade", "head"]
+resources:
+  requests: { cpu: 25m, memory: 96Mi }
+  limits: { memory: 256Mi }

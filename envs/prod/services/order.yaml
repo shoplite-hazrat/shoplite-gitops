@@ -1,0 +1,5 @@
+# order in prod. The image tag is updated by CI (dev) or by promotion PRs (staging, prod).
+image:
+  tag: sha-3f55e5a
+# Two replicas: survives a node/zone loss and enables the PodDisruptionBudget.
+replicaCount: 2
