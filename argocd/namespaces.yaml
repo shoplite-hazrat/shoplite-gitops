@@ -11,6 +11,7 @@ metadata:
     shoplite.io/env: dev
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/warn: restricted
+    shoplite.io/gateway-access: "true"
 ---
 apiVersion: v1
 kind: Namespace
@@ -22,6 +23,7 @@ metadata:
     shoplite.io/env: staging
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/warn: restricted
+    shoplite.io/gateway-access: "true"
 ---
 apiVersion: v1
 kind: Namespace
@@ -33,3 +35,4 @@ metadata:
     shoplite.io/env: prod
     pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/warn: restricted
+    shoplite.io/gateway-access: "true"

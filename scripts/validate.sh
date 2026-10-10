@@ -35,13 +35,15 @@ for envdir in envs/*/; do
       -f "values/$svc.yaml" -f "$f" > "$OUT/$env-$svc.yaml"
   done
   helm template data charts/shoplite-data -n "shoplite-$env" -f "$envdir/data.yaml" > "$OUT/$env-data.yaml"
-  echo "  $env: $(ls "$envdir"services | wc -l) services + data"
+  helm template edge charts/shoplite-edge -n "shoplite-$env" -f "$envdir/edge.yaml" > "$OUT/$env-edge.yaml"
+  echo "  $env: $(ls "$envdir"services | wc -l) services + data + edge"
 done
 
 helm template nats nats --repo https://nats-io.github.io/k8s/helm/charts/ \
   --version "$NATS_CHART_VERSION" -f envs/nats-values.yaml > "$OUT/nats.yaml"
 cp argocd/*.yaml "$OUT/"
-echo "  nats chart $NATS_CHART_VERSION + argocd/ manifests"
+for f in platform/*/*.yaml; do cp "$f" "$OUT/platform-$(basename "$(dirname "$f")")-$(basename "$f")"; done
+echo "  nats chart $NATS_CHART_VERSION + argocd/ + platform/ manifests"
 
 echo "== Schema validation (kubeconform, incl. Argo CD and CloudNativePG CRDs)"
 kubeconform -strict -summary -kubernetes-version 1.35.0 \

@@ -1,0 +1,133 @@
+{{- $host := required "hostname is required" .Values.hostname }}
+# The public API surface of one environment. It deliberately exposes only what
+# the browser needs, mirroring the compose gateway:
+#   GET  /api/catalog/v1/products[/<uuid>]   -> catalog  /v1/products[/<uuid>]
+#   POST /api/orders/v1/orders               -> order    /v1/orders
+#   GET  /api/orders/v1/orders/<uuid>        -> order    /v1/orders/<uuid>
+#   any other /api/*                         -> 404 from the gateway
+#   everything else                          -> frontend
+# Internal endpoints (stock reserve/release, product admin, order listing,
+# /metrics, probes) are never reachable from outside the cluster.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: shoplite
+  labels:
+    app.kubernetes.io/part-of: shoplite
+spec:
+  parentRefs:
+    - name: {{ .Values.gateway.name }}
+      namespace: {{ .Values.gateway.namespace }}
+      sectionName: {{ .Values.gateway.sectionName }}
+  hostnames:
+    - {{ $host | quote }}
+  rules:
+    - matches:
+        - method: GET
+          path:
+            type: RegularExpression
+            value: '^/api/catalog/v1/products(/[0-9a-f-]{36})?$'
+      filters:
+        - type: ExtensionRef
+          extensionRef: { group: gateway.envoyproxy.io, kind: HTTPRouteFilter, name: strip-api-catalog }
+      backendRefs:
+        - name: catalog
+          port: 3000
+    - matches:
+        - method: POST
+          path:
+            type: Exact
+            value: /api/orders/v1/orders
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplaceFullPath
+              replaceFullPath: /v1/orders
+      backendRefs:
+        - name: order
+          port: 8000
+    - matches:
+        - method: GET
+          path:
+            type: RegularExpression
+            value: '^/api/orders/v1/orders/[0-9a-f-]{36}$'
+      filters:
+        - type: ExtensionRef
+          extensionRef: { group: gateway.envoyproxy.io, kind: HTTPRouteFilter, name: strip-api-orders }
+      backendRefs:
+        - name: order
+          port: 8000
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /api
+      filters:
+        - type: ExtensionRef
+          extensionRef: { group: gateway.envoyproxy.io, kind: HTTPRouteFilter, name: api-not-found }
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: frontend
+          port: 8080
+---
+# Envoy Gateway extensions: regex path rewrites and a direct 404 response,
+# which the core Gateway API filters can't express.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: HTTPRouteFilter
+metadata:
+  name: strip-api-catalog
+spec:
+  urlRewrite:
+    path:
+      type: ReplaceRegexMatch
+      replaceRegexMatch:
+        pattern: '^/api/catalog'
+        substitution: ''
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: HTTPRouteFilter
+metadata:
+  name: strip-api-orders
+spec:
+  urlRewrite:
+    path:
+      type: ReplaceRegexMatch
+      replaceRegexMatch:
+        pattern: '^/api/orders'
+        substitution: ''
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: HTTPRouteFilter
+metadata:
+  name: api-not-found
+spec:
+  directResponse:
+    statusCode: 404
+    contentType: application/json
+    body:
+      type: Inline
+      inline: '{"detail":"not found"}'
+{{- with .Values.mailpitHostname }}
+---
+# Mailpit's web UI, to see the emails this environment sends.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: mailpit
+  labels:
+    app.kubernetes.io/part-of: shoplite
+spec:
+  parentRefs:
+    - name: {{ $.Values.gateway.name }}
+      namespace: {{ $.Values.gateway.namespace }}
+      sectionName: {{ $.Values.gateway.sectionName }}
+  hostnames:
+    - {{ . | quote }}
+  rules:
+    - backendRefs:
+        - name: mailpit
+          port: 8025
+{{- end }}

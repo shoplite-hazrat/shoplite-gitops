@@ -93,3 +93,48 @@ spec:
         retry:
           limit: 10
           backoff: { duration: 15s, factor: 2, maxDuration: 3m }
+---
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: environments-edge
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - git:
+        repoURL: https://github.com/shoplite-hazrat/shoplite-gitops.git
+        revision: main
+        directories:
+          - path: envs/*
+  template:
+    metadata:
+      name: "{{ .path.basename }}-edge"
+      labels:
+        shoplite.io/env: "{{ .path.basename }}"
+        shoplite.io/component: edge
+    spec:
+      project: shoplite
+      source:
+        repoURL: https://github.com/shoplite-hazrat/shoplite-gitops.git
+        targetRevision: main
+        path: charts/shoplite-edge
+        helm:
+          releaseName: edge
+          valueFiles:
+            - "../../envs/{{ .path.basename }}/edge.yaml"
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: "shoplite-{{ .path.basename }}"
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - SkipDryRunOnMissingResource=true # Gateway API CRDs may still be installing
+        retry:
+          limit: 10
+          backoff: { duration: 15s, factor: 2, maxDuration: 3m }

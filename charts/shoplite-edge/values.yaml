@@ -1,0 +1,9 @@
+# Hostnames must fall under the Gateway certificate: shoplite.localhost or
+# *.shoplite.localhost (a single label, so "mail-dev", not "mail.dev").
+hostname: ""
+mailpitHostname: ""
+
+gateway:
+  name: shoplite
+  namespace: gateway
+  sectionName: https

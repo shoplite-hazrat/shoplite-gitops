@@ -1,0 +1,106 @@
+# One shared Gateway for the whole cluster. Platform owns it; each environment
+# attaches its own HTTPRoutes (charts/shoplite-edge) from its own namespace.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: kind-nodeport
+  namespace: envoy-gateway-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyDeployment:
+        replicas: 1
+        pod:
+          # Only the control-plane node has kind's host port mappings
+          # (127.0.0.1:8081 -> 30080, 127.0.0.1:8443 -> 30443).
+          nodeSelector:
+            ingress-ready: "true"
+          tolerations:
+            - key: node-role.kubernetes.io/control-plane
+              operator: Exists
+              effect: NoSchedule
+        container:
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 256Mi }
+      envoyService:
+        # A cloud would use type LoadBalancer; kind has no load balancer.
+        type: NodePort
+        patch:
+          type: StrategicMerge
+          value:
+            spec:
+              ports:
+                - port: 80
+                  nodePort: 30080
+                - port: 443
+                  nodePort: 30443
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: GatewayClass
+metadata:
+  name: envoy
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  controllerName: gateway.envoyproxy.io/gatewayclass-controller
+  parametersRef:
+    group: gateway.envoyproxy.io
+    kind: EnvoyProxy
+    name: kind-nodeport
+    namespace: envoy-gateway-system
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: shoplite
+  namespace: gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  gatewayClassName: envoy
+  listeners:
+    # Plain HTTP only redirects to HTTPS (route below); nothing else may attach.
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: Same
+    - name: https
+      protocol: HTTPS
+      port: 443
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: shoplite-tls
+      # Only namespaces the platform has opted in may publish routes.
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              shoplite.io/gateway-access: "true"
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: https-redirect
+  namespace: gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  parentRefs:
+    - name: shoplite
+      sectionName: http
+  rules:
+    - filters:
+        - type: RequestRedirect
+          requestRedirect:
+            scheme: https
+            port: 8443 # the host port kind forwards to the HTTPS listener
+            statusCode: 301

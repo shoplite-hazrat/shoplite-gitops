@@ -1,0 +1,3 @@
+# Public hostnames for staging.
+hostname: staging.shoplite.localhost
+mailpitHostname: mail-staging.shoplite.localhost

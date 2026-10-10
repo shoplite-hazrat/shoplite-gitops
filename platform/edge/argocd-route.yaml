@@ -1,0 +1,39 @@
+# Argo CD UI at https://argocd.shoplite.localhost:8443
+# The route lives in the gateway namespace and points at a Service in argocd,
+# which a ReferenceGrant in argocd must explicitly allow (cross-namespace
+# references are denied by default in Gateway API).
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: argocd
+  namespace: gateway
+  annotations:
+    argocd.argoproj.io/sync-wave: "5"
+spec:
+  parentRefs:
+    - name: shoplite
+      sectionName: https
+  hostnames:
+    - argocd.shoplite.localhost
+  rules:
+    - backendRefs:
+        - name: argocd-server
+          namespace: argocd
+          port: 80
+---
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-gateway-routes
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "4"
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      namespace: gateway
+  to:
+    - group: ""
+      kind: Service
+      name: argocd-server

@@ -11,7 +11,8 @@ shoplite-infra (Terraform) ── installs ──> Argo CD + root Application
 argocd/projects.yaml            AppProjects "platform" and "shoplite" (guardrails)
 argocd/namespaces.yaml          shoplite-dev | -staging | -prod  (Pod Security: restricted)
 argocd/platform-cnpg.yaml       CloudNativePG operator
-argocd/appset-environments.yaml one <env>-data + <env>-nats app per envs/<env>/ directory
+argocd/platform-edge.yaml       Envoy Gateway, cert-manager, and platform/edge (Gateway, TLS, Argo CD route)
+argocd/appset-environments.yaml one <env>-data, <env>-nats and <env>-edge app per envs/<env>/ directory
 argocd/appset-services.yaml     one <env>-<service> app per envs/<env>/services/<service>.yaml
 ```
 
@@ -22,9 +23,35 @@ argocd/appset-services.yaml     one <env>-<service> app per envs/<env>/services/
 | `values/<service>.yaml` | What is specific to a service (image repo, port, env, migration command) |
 | `envs/<env>/services/<service>.yaml` | What differs per environment, above all the **image tag** |
 | `envs/<env>/data.yaml` | Data sizing per environment |
+| `envs/<env>/edge.yaml` | Public hostnames per environment |
+| `charts/shoplite-edge/` | Per-env HTTPRoutes: the public API surface (catalog read-only, orders create/get only, other `/api/*` get 404) |
+| `platform/edge/` | Shared Gateway, local CA + certificate, HTTP to HTTPS redirect, Argo CD route |
 | `envs/nats-values.yaml` | NATS (JetStream) values shared by all environments |
 
 Values are layered: chart defaults, then `values/<service>.yaml`, then `envs/<env>/services/<service>.yaml`.
+
+## URLs
+
+All traffic enters through one Gateway (Envoy Gateway, Gateway API) on the kind control-plane node. HTTP on `:8081` redirects to HTTPS on `:8443`. `*.localhost` resolves to your machine in browsers and curl, so no `/etc/hosts` edits are needed.
+
+| URL | What |
+|---|---|
+| https://shoplite.localhost:8443 | Shop: **prod** |
+| https://staging.shoplite.localhost:8443 | Shop: staging |
+| https://dev.shoplite.localhost:8443 | Shop: dev |
+| https://mail.shoplite.localhost:8443 (`mail-staging.`, `mail-dev.`) | Mailpit per environment |
+| https://argocd.shoplite.localhost:8443 | Argo CD (user `admin`, `make argocd-password` in shoplite-infra) |
+
+### Trusting the local CA
+
+cert-manager runs a local CA ("ShopLite Local CA") and issues the `*.shoplite.localhost` certificate from it, renewing it automatically. Until you trust the CA, browsers show a warning. To trust it:
+
+```bash
+kubectl -n cert-manager get secret shoplite-local-ca -o jsonpath='{.data.ca\.crt}' | base64 -d > shoplite-ca.crt
+# Linux system store:  sudo cp shoplite-ca.crt /usr/local/share/ca-certificates/ && sudo update-ca-certificates
+# Browsers (Chrome/Firefox): Settings > Certificates > Authorities > Import shoplite-ca.crt
+curl --cacert shoplite-ca.crt https://shoplite.localhost:8443/api/catalog/v1/products
+```
 
 ## Common changes
 

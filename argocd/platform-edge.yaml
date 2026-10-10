@@ -1,0 +1,123 @@
+# The cluster's edge: Gateway API implementation (Envoy Gateway), certificate
+# management (cert-manager), and the shared Gateway + TLS config in platform/edge.
+---
+# Envoy Gateway's chart is published to an OCI registry; Argo CD needs the
+# registry declared as an OCI-enabled Helm repository. No credentials: public.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: repo-envoyproxy-oci
+  namespace: argocd
+  labels:
+    argocd.argoproj.io/secret-type: repository
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+stringData:
+  name: envoyproxy
+  type: helm
+  url: docker.io/envoyproxy
+  enableOCI: "true"
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-envoy-gateway
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: platform
+  source:
+    repoURL: docker.io/envoyproxy
+    chart: gateway-helm
+    targetRevision: 1.9.2
+    helm:
+      releaseName: envoy-gateway
+      valuesObject:
+        deployment:
+          envoyGateway:
+            resources:
+              requests: { cpu: 50m, memory: 128Mi }
+              limits: { memory: 512Mi }
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: envoy-gateway-system
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true # Gateway API CRDs are too large for client-side apply
+    retry:
+      limit: 10
+      backoff: { duration: 10s, factor: 2, maxDuration: 3m }
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-cert-manager
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  project: platform
+  source:
+    repoURL: https://charts.jetstack.io
+    chart: cert-manager
+    targetRevision: v1.21.2
+    helm:
+      releaseName: cert-manager
+      valuesObject:
+        crds:
+          enabled: true
+          keep: true # deleting the app must not delete every Certificate in the cluster
+        resources:
+          requests: { cpu: 10m, memory: 64Mi }
+          limits: { memory: 256Mi }
+        webhook:
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 128Mi }
+        cainjector:
+          resources:
+            requests: { cpu: 10m, memory: 64Mi }
+            limits: { memory: 256Mi }
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cert-manager
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 10
+      backoff: { duration: 10s, factor: 2, maxDuration: 3m }
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-edge
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/shoplite-hazrat/shoplite-gitops.git
+    targetRevision: main
+    path: platform/edge
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: gateway
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions:
+      - CreateNamespace=true
+      # CRDs come from the two apps above, which may still be syncing.
+      - SkipDryRunOnMissingResource=true
+    managedNamespaceMetadata:
+      labels:
+        shoplite.io/gateway-access: "true"
+    retry:
+      limit: 10
+      backoff: { duration: 15s, factor: 2, maxDuration: 3m }
