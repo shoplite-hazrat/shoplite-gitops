@@ -1,0 +1,4 @@
+charts/*/charts/
+*.tgz
+# never commit plaintext secrets; only SealedSecrets
+*secret*.plain.yaml
