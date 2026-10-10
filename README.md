@@ -30,11 +30,20 @@ Values are layered: chart defaults, then `values/<service>.yaml`, then `envs/<en
 
 | I want to... | Change |
 |---|---|
-| Deploy a new version to dev | CI does it: a PR bumping `envs/dev/services/<svc>.yaml` `image.tag` |
-| Promote to staging / prod | PR copying the tag into `envs/staging/...` / `envs/prod/...` |
+| Deploy a new version to dev | Nothing. The app repo's CI opens a `deploy(dev)` PR bumping `image.tag`; it auto-merges when CI is green |
+| Promote dev to staging, or staging to prod | Actions, then **Promote**, then **Run workflow** (choose `from`). It opens a PR with a before/after tag table; merging it is the approval |
 | Roll back | `git revert` the bump commit |
 | Scale a service in prod | `replicaCount` in `envs/prod/services/<svc>.yaml` |
 | Add an environment | New `envs/<name>/` with `data.yaml` and `services/*.yaml`, plus a namespace in `argocd/namespaces.yaml` |
+
+## Delivery flow
+
+```
+app repo: merge to main ─> build, scan, sign sha-abc1234 ─> PR here: envs/dev tag = sha-abc1234 ─> auto-merge on green ─> Argo CD: dev
+Promote workflow: dev ─> staging ─> prod   (a PR each, human merge = approval; prod never skips staging)
+```
+
+Both bots use the `GITOPS_TOKEN` secret, a fine-grained token limited to this repo (contents + pull requests). PRs opened with the default `GITHUB_TOKEN` would not trigger CI, so their required check could never pass.
 
 ## Rules (enforced by CI: `scripts/validate.sh`)
 
