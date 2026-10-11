@@ -84,8 +84,11 @@ spec:
     path:
       type: ReplaceRegexMatch
       replaceRegexMatch:
-        pattern: '^/api/catalog'
-        substitution: ''
+        # Keep the rest of the path via a capture group. An empty substitution
+        # is rejected by Envoy Gateway as "no rewrite", which blocks the whole
+        # Gateway config.
+        pattern: '^/api/catalog(/.*)$'
+        substitution: '\1'
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: HTTPRouteFilter
@@ -96,8 +99,11 @@ spec:
     path:
       type: ReplaceRegexMatch
       replaceRegexMatch:
-        pattern: '^/api/orders'
-        substitution: ''
+        # Keep the rest of the path via a capture group. An empty substitution
+        # is rejected by Envoy Gateway as "no rewrite", which blocks the whole
+        # Gateway config.
+        pattern: '^/api/orders(/.*)$'
+        substitution: '\1'
 ---
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: HTTPRouteFilter
