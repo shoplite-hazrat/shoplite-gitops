@@ -67,6 +67,11 @@ spec:
     helm:
       releaseName: cert-manager
       valuesObject:
+        global:
+          # Keep everything in cert-manager's own namespace (the default puts
+          # leader-election objects in kube-system, outside the platform project).
+          leaderElection:
+            namespace: cert-manager
         crds:
           enabled: true
           keep: true # deleting the app must not delete every Certificate in the cluster
